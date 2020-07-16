@@ -1,21 +1,28 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[1]:
+# In[2]:
 
 
 import torch
 from torch.utils.data import Dataset, DataLoader
+from torchvision import transforms, utils
+from torch.utils.tensorboard import SummaryWriter
+from torchsummary import summary
+
 from matplotlib import pyplot as plt
+from model import BackBone
+
 import numpy as np
 import os
 import json
 import cv2
 import imutils
-#--------------------------------------------------------------------------------------------------------------------------
+
+device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
 
-# In[2]:
+# In[3]:
 
 
 class Pose_Dataset(Dataset):
@@ -52,8 +59,10 @@ class Pose_Dataset(Dataset):
         kpts = np.reshape(kpts, (17,3))
         kpts[:, 0] = kpts[:, 0] - int(bbox[0])
         kpts[:, 1] = kpts[:, 1] - int(bbox[1])
+        
         # now generate gaussian maps as target
-        sigmas = [13, 6.5, 3, 1.5]
+        
+        sigmas = [13, 9, 6, 3]
         target = []
         for sigma in sigmas:
             target.append(form_gaussian_batch(sigma, kpts, cropped_img))
@@ -62,26 +71,45 @@ class Pose_Dataset(Dataset):
         if self.transform:
             sample = self.transform(sample)
         return sample
-#--------------------------------------------------------------------------------------------------------------------------
-
-
-# In[3]:
-
-
-def my_collate(Batch):
-    image = []
-    targets = []
-    for item in Batch:
-        img = item['image']
-        if(img.shape[0] * img.shape[1] < 10000):
-            continue
-        image.append(img)
-        targets.append(item['target'])
-    return {'image' : image , 'target' : targets}
-#--------------------------------------------------------------------------------------------------------------------------
 
 
 # In[4]:
+
+
+def my_collate(Batch):
+    max_height, max_width = 0, 0
+    useful_images = 0
+    
+    for item in Batch:
+        image = item['image']
+        if(image.shape[1] * image.shape[2] > 10000):
+            useful_images += 1
+        max_height = max(max_height, image.shape[1])
+        max_width = max(max_width, image.shape[2])
+
+    mini_batch = torch.zeros((useful_images, 3, max_height, max_width), device = device)
+    mini_batch_target = torch.zeros((useful_images, 17*4, max_height, max_width), device = device)
+
+    i = 0
+    for item in Batch:
+        if(i >= useful_images):
+            break
+        img = item['image']
+        if(img.shape[1] * img.shape[2] < 10000):
+            continue
+        
+        left_padding = (max_width-(img.shape[2]))//2
+        top_padding = (max_height-(img.shape[1]))//2
+        
+        mini_batch[i, :, top_padding:(top_padding + img.shape[1]),left_padding:(left_padding + img.shape[2])] = img
+        for j, batch in enumerate(item['target']):
+            mini_batch_target[i, 17*j:(17*j+17), top_padding:(top_padding + img.shape[1]),left_padding:(left_padding + img.shape[2])] = batch
+        i += 1
+
+    return [mini_batch, mini_batch_target]
+
+
+# In[5]:
 
 
 class RandomFlip(object):
@@ -104,10 +132,9 @@ class RandomFlip(object):
                 flipped_target.append(corrected_batch)
             return {'image' : flipped_image, 'target' : flipped_target}
         return sample
-#--------------------------------------------------------------------------------------------------------------------------
 
 
-# In[13]:
+# In[6]:
 
 
 class RandomRotate(object):
@@ -126,10 +153,9 @@ class RandomRotate(object):
                 rotated_batch[:, :, i] = imutils.rotate_bound(np.float32(batch[:, :, i]), angle = angle)
             rotated_target.append(rotated_batch)
         return {'image' : rotated_image, 'target' : rotated_target}
-#--------------------------------------------------------------------------------------------------------------------------
 
 
-# In[14]:
+# In[7]:
 
 
 class ToTensor(object):
@@ -143,36 +169,65 @@ class ToTensor(object):
         image = torch.from_numpy(image)
         tensor_targets = []
         for batch in targets:
-            tensor_targets.append(torch.from_numpy(batch)) 
+            tensor_targets.append(torch.from_numpy(np.transpose(batch, (2, 0, 1)))) 
         return {'image': image,
                 'target': tensor_targets}
 
 
-# In[17]:
+# In[8]:
 
 
 if __name__ == '__main__':
     
-    pose_keypoints = Pose_Dataset('../annotations/vru_keypoints_val_copy.json', '../images/val')
-    train_loader = DataLoader(pose_keypoints, batch_size = 8, shuffle = False, num_workers = 0,collate_fn = my_collate
-                             ,pin_memory = True)
-    #--------------------------------------------------------------------------------------------------------------------------
+    pose_keypoints = Pose_Dataset(annotations_path = 'Data/annotations/vru_keypoints_val_copy.json',
+                      img_path = 'Data/images/val',
+                      transform = transforms.Compose([
+                          RandomFlip(0.5),
+                          RandomRotate(degree = 10),
+                          ToTensor()
+                      ]))
+    
+    train_loader = DataLoader(pose_keypoints, batch_size = 16, shuffle = False, collate_fn = my_collate
+                             )
+    for image, target in train_loader:
+        print("Shape of image batch is :",image.shape)
+        print("Shape of target batch is :",target.shape)
+        print("Type of image is :", image.type())
+        print("Type of target is :", target.type())
 
-    batch_data = next(iter(train_loader))
-    #--------------------------------------------------------------------------------------------------------------------------
+    iterator = iter(train_loader)
+    image, target = next(iterator)
 
-    img = batch_data['image'][1]
-    plt.imshow(img[:, :, [2,1,0]])
-    anno = batch_data['target'][1][3][:, :, 16]
-    plt.imshow(anno, alpha = 0.5)
-    #--------------------------------------------------------------------------------------------------------------------------
+    axes = []
+    fig = plt.figure()
+    for i in range(image.shape[0]):
+        img = np.transpose(image[i].cpu(), (1, 2, 0))
+        axes.append(fig.add_subplot(2, 4, i+1))
+    #     axes[-1].set_title("image :", i)
+        plt.imshow(img[:, :, [2, 1, 0]])
+        plt.imshow(target[i][34].cpu(), alpha = 0.5)
+    # fig.tight_layout()
+    plt.show()
 
-    tsfm = RandomRotate(degree = 30)
-    transformed_sample = tsfm(pose_keypoints[1])
-    #--------------------------------------------------------------------------------------------------------------------------
+#     #--------------------------------------------------------------------------------------------------------------------------
 
-    plt.imshow(transformed_sample['image'][:, :, [2, 1, 0]])
-    plt.imshow(transformed_sample['target'][2][:, :, 11], alpha = 0.5)
+#     batch_data = next(iter(train_loader))
+#     img = batch_data['image'][1]
+#     #--------------------------------------------------------------------------------------------------------------------------
+#     plt.imshow(np.transpose(img, (1,2,0))[:, :, [2, 1, 0]])
+#     anno = batch_data['target'][1][0][:, :, 16]
+#     plt.imshow(anno, alpha = 0.5)
+#     #--------------------------------------------------------------------------------------------------------------------------
+
+#     model = BackBone().cuda()
+#     summary(model, (3, 269, 117))
+
+#     data = iter(train_loader).next()
+#     images = data['image']
+#     # print(type(images[0]))
+# #     writer = SummaryWriter('runs/experiment1')
+# #     writer.add_graph(model, images[0][None, : , :, :].to('cuda'))
+# #     writer.close()
 
 
 # In[ ]:
