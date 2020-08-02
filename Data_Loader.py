@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[2]:
+# In[1]:
 
 
 import torch
@@ -22,11 +22,11 @@ import imutils
 device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
 
-# In[3]:
+# In[15]:
 
 
 class Pose_Dataset(Dataset):
-    def __init__(self, annotations_path, img_path, transform = None):
+    def __init__(self, annotations_path, img_path, transform = None, dataset = 'VRU'):
         f = open(annotations_path, 'r')
         self.all_annotations = json.load(f)
         self.keypoints = self.all_annotations['annotations']
@@ -34,6 +34,7 @@ class Pose_Dataset(Dataset):
         self.annnotations_path = annotations_path
         self.img_path = img_path
         self.transform = transform
+        self.dataset = dataset
     def __len__(self):
         return len(self.keypoints)
     def __getitem__(self, idx):
@@ -45,15 +46,22 @@ class Pose_Dataset(Dataset):
     
         def get_gaussian(output_shape, x, y, sigma):
             xx, yy= np.meshgrid(np.arange(output_shape[1]), np.arange(output_shape[0]))
-            return ((1/(np.sqrt(2*np.pi*sigma**2)))*np.exp(-(yy-y)**2/(2*sigma**2)))*((1/(np.sqrt(2*np.pi*sigma**2)))*np.exp(-(xx-x)**2/(2*sigma**2)))
+            target = (np.exp(-(yy-y)**2/(2*sigma**2)))*(np.exp(-(xx-x)**2/(2*sigma**2)))
+            weights = (target >=0.01)
+            target = target * weights
+            return target
         
         if torch.is_tensor(idx):
             idx = idx.to_list()
         anns = self.keypoints[idx]
-        image = cv2.imread(os.path.join(self.img_path, anns['image_name']))
-        image = cv2.resize(image, (0,0), fx = 0.2, fy = 0.2)
+        
+        if self.dataset == 'VRU':
+            image = cv2.imread(os.path.join(self.img_path, anns['image_name']))
+            image = cv2.resize(image, (0,0), fx = 0.2, fy = 0.2)
+        else:
+            image = cv2.imread(self.img_path + str(anns['image_id']).zfill(12) + '.jpg')
         bbox = anns['bbox']
-        cropped_img = image[bbox[1]:(bbox[1]+bbox[3]), bbox[0]:(bbox[0]+bbox[2])]
+        cropped_img = image[int(bbox[1]):int(bbox[1]+bbox[3]), int(bbox[0]):int(bbox[0]+bbox[2])]
         
         kpts = np.array(anns['keypoints'], dtype = np.int32)
         kpts = np.reshape(kpts, (17,3))
@@ -62,18 +70,20 @@ class Pose_Dataset(Dataset):
         
         # now generate gaussian maps as target
         
-        sigmas = [13, 9, 6, 3]
+        ratio = (cropped_img.shape[0] * cropped_img.shape[1]) * (25/(380 * 300))
+        
+        sigmas = [ratio, ratio, ratio, ratio]
         target = []
         for sigma in sigmas:
             target.append(form_gaussian_batch(sigma, kpts, cropped_img))
-        sample = {'image' : cropped_img, 'target' : target}
+        sample = {'image' : cropped_img, 'target' : target, 'num_kpts' : anns['num_keypoints']}
         
         if self.transform:
             sample = self.transform(sample)
         return sample
 
 
-# In[4]:
+# In[3]:
 
 
 def my_collate(Batch):
@@ -82,7 +92,7 @@ def my_collate(Batch):
     
     for item in Batch:
         image = item['image']
-        if(image.shape[1] * image.shape[2] > 10000):
+        if(image.shape[1] * image.shape[2] > 10000 and item['num_kpts'] >= 5):
             useful_images += 1
         max_height = max(max_height, image.shape[1])
         max_width = max(max_width, image.shape[2])
@@ -95,7 +105,11 @@ def my_collate(Batch):
         if(i >= useful_images):
             break
         img = item['image']
-        if(img.shape[1] * img.shape[2] < 10000):
+        if(img.shape[1] * img.shape[2] < 10000 or item['num_kpts'] < 5):
+#             if(item['num_kpts'] < 5):
+#                 print("item with less than 5 num keypoints found")
+#             else:
+#                 print("item with less image size found")
             continue
         
         left_padding = (max_width-(img.shape[2]))//2
@@ -109,7 +123,7 @@ def my_collate(Batch):
     return [mini_batch, mini_batch_target]
 
 
-# In[5]:
+# In[4]:
 
 
 class RandomFlip(object):
@@ -130,11 +144,11 @@ class RandomFlip(object):
                     corrected_batch[:, :, ((2*j) -1)] = flipped_batch[:, :, (2*j)]
                     corrected_batch[:, :, (2*j)] = flipped_batch[:, :, ((2*j) -1)]
                 flipped_target.append(corrected_batch)
-            return {'image' : flipped_image, 'target' : flipped_target}
+            return {'image' : flipped_image, 'target' : flipped_target, 'num_kpts' : sample['num_kpts']}
         return sample
 
 
-# In[6]:
+# In[5]:
 
 
 class RandomRotate(object):
@@ -152,10 +166,10 @@ class RandomRotate(object):
             for i in range(0, 17):
                 rotated_batch[:, :, i] = imutils.rotate_bound(np.float32(batch[:, :, i]), angle = angle)
             rotated_target.append(rotated_batch)
-        return {'image' : rotated_image, 'target' : rotated_target}
+        return {'image' : rotated_image, 'target' : rotated_target, 'num_kpts' : sample['num_kpts']}
 
 
-# In[7]:
+# In[6]:
 
 
 class ToTensor(object):
@@ -171,41 +185,48 @@ class ToTensor(object):
         for batch in targets:
             tensor_targets.append(torch.from_numpy(np.transpose(batch, (2, 0, 1)))) 
         return {'image': image,
-                'target': tensor_targets}
+                'target': tensor_targets,
+                'num_kpts' : sample['num_kpts']
+               }
 
 
-# In[8]:
+# In[18]:
 
 
 if __name__ == '__main__':
     
-    pose_keypoints = Pose_Dataset(annotations_path = 'Data/annotations/vru_keypoints_val_copy.json',
-                      img_path = 'Data/images/val',
+    pose_keypoints = Pose_Dataset(annotations_path = 'Data/annotations/COCO/person_keypoints_train2017.json',
+                      img_path = 'D:/Downloads/train2017/train2017/',
                       transform = transforms.Compose([
                           RandomFlip(0.5),
                           RandomRotate(degree = 10),
                           ToTensor()
-                      ]))
+                      ]),
+                      dataset = 'COCO')
     
     train_loader = DataLoader(pose_keypoints, batch_size = 16, shuffle = False, collate_fn = my_collate
                              )
-    for image, target in train_loader:
-        print("Shape of image batch is :",image.shape)
-        print("Shape of target batch is :",target.shape)
-        print("Type of image is :", image.type())
-        print("Type of target is :", target.type())
+#     for image, target in train_loader:
+#         print("Shape of image batch is :",image.shape)
+#         print("Shape of target batch is :",target.shape)
+#         print("Type of image is :", image.type())
+#         print("Type of target is :", target.type())
 
     iterator = iter(train_loader)
     image, target = next(iterator)
-
+    image, target = next(iterator)
+    image, target = next(iterator)
+    image, target = next(iterator)
+#     image, target = next(iterator)
+    
     axes = []
-    fig = plt.figure()
+    fig = plt.figure(figsize = (20, 20))
     for i in range(image.shape[0]):
         img = np.transpose(image[i].cpu(), (1, 2, 0))
-        axes.append(fig.add_subplot(2, 4, i+1))
+        axes.append(fig.add_subplot(4, 4, i+1))
     #     axes[-1].set_title("image :", i)
         plt.imshow(img[:, :, [2, 1, 0]])
-        plt.imshow(target[i][34].cpu(), alpha = 0.5)
+        plt.imshow((target[i][5].cpu()), alpha = 0.5)
     # fig.tight_layout()
     plt.show()
 
@@ -228,6 +249,26 @@ if __name__ == '__main__':
 # #     writer = SummaryWriter('runs/experiment1')
 # #     writer.add_graph(model, images[0][None, : , :, :].to('cuda'))
 # #     writer.close()
+
+
+# In[32]:
+
+
+# annotations_path = 'Data/annotations/COCO/person_keypoints_train2017.json'
+# img_path = 'D:/Downloads/train2017/train2017/'
+
+# f = open(annotations_path, 'r')
+# all_annotations = json.load(f)
+# f.close()
+
+# print(all_annotations['annotations'][0].keys())
+
+# print(all_annotations['annotations'][2]['num_keypoints'])
+# img_name = all_annotations['annotations'][2]['image_id']
+# print(img_path + str(img_name).zfill(12) + '.jpg')
+# image = cv2.imread(img_path + str(img_name).zfill(12) + '.jpg')
+
+# plt.imshow(image[:, :, [2, 1, 0]])
 
 
 # In[ ]:

@@ -1,0 +1,10 @@
+torch
+torchvision
+json
+cv2
+numpy 
+os
+matplotlib
+torchsummary
+imutils
+shutil
