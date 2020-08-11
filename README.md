@@ -1,5 +1,5 @@
 # VRU_Net
-Codebase containing the scripts of training/testing of the proposed VRU-Net for Human Pose Estimation.
+Codebase containing the scripts of training/testing of the proposed VRU-Net for Human Pose Estimation. More details about the project can be found in [this](https://docs.google.com/document/d/1WAAjlRcaQkftHq1hMvORNOwW4jbvuTLPxICMzBCF44Q/edit?usp=sharing) report.
 
 ### Setup
 #### COCO Dataset
