@@ -6,10 +6,11 @@ Codebase containing the scripts of training/testing of the proposed VRU-Net for 
   1. Download the [COCO](https://cocodataset.org/#download) training data from [here](http://images.cocodataset.org/zips/train2017.zip) and unzip it in `$Root/Data/COCO/`. 
   2. Download the [COCO](https://cocodataset.org/#download) validation data from [here](http://images.cocodataset.org/zips/val2017.zip) and unzip it in `$Root/Data/COCO/`.
   3. Download the annotations file from [here](http://images.cocodataset.org/annotations/annotations_trainval2017.zip) and unzip it in `$Root/Data/COCO/annotations/`.
-  4. Install the packages written in `$root/required packages.txt`.
+  4. Install the packages written in `$Root/required packages.txt`.
 ### Directory Structure
 After doing the above setup the directory should look like:
 ```bash
+$Root
 ├── Data
 │   ├── COCO
 │   │   ├── Annotations
