@@ -69,7 +69,7 @@ Note : The model was trained for only half an epoch so the results are primitive
 - [X] Add results.
 - [ ] Add training and validation curve.
 - [ ] Add code for extracting the final keypoint location from the predicted heatmap.
-- [ ] Add network architecture.
+- [ ] Add network architecture diagram.
 
 ### Conclusion
 ![It ain't much but its honest work](https://github.com/Kartikaeya/VRU_Net/blob/master/pics/it_aint_much_meme_pred.PNG).
