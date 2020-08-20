@@ -33,6 +33,7 @@ $Root
 |               ├── img1.jpg
 |               ├── img2.jpg
 |               └── ...
+├── pics/
 ├── runs/
 ├── trained_models/
 ├── Data_Loader.ipynb
@@ -50,3 +51,25 @@ $Root
    1. Make sure that `setup` is done and the files are placed as in `Directory Structure`.
    2. Modify the hyperparameters in the second block of `train.ipynb`.
    3. Run the Notebook `train.ipynb`
+### Testing
+   1. Download the pretrained model from [google drive](https://drive.google.com/file/d/1SAXo_5OEJc_XhHZ4ME2OIHJT9CsvUIqg/view?usp=sharing) and place it in `trained_models`.
+   2. Run `Inference.ipynb`.
+### Results
+Note : The model was trained for only half an epoch so the results are primitive.
+
+![Ground Truth](https://github.com/Kartikaeya/VRU_Net/blob/master/pics/D2.PNG) ![Predicted Heatmap](https://github.com/Kartikaeya/VRU_Net/blob/master/pics/D1.PNG) <br />
+![Ground Truth](https://github.com/Kartikaeya/VRU_Net/blob/master/pics/E2.PNG) ![Predicted Heatmap](https://github.com/Kartikaeya/VRU_Net/blob/master/pics/E1.PNG) <br />
+![Ground Truth](https://github.com/Kartikaeya/VRU_Net/blob/master/pics/F2.PNG) ![Predicted Heatmap](https://github.com/Kartikaeya/VRU_Net/blob/master/pics/F1.PNG) <br />
+![Ground Truth](https://github.com/Kartikaeya/VRU_Net/blob/master/pics/G2.PNG) ![Predicted Heatmap](https://github.com/Kartikaeya/VRU_Net/blob/master/pics/G1.PNG) <br />
+![Ground Truth](https://github.com/Kartikaeya/VRU_Net/blob/master/pics/H2.PNG) ![Predicted Heatmap](https://github.com/Kartikaeya/VRU_Net/blob/master/pics/H1.PNG) <br />
+![Ground Truth](https://github.com/Kartikaeya/VRU_Net/blob/master/pics/I2.PNG) ![Predicted Heatmap](https://github.com/Kartikaeya/VRU_Net/blob/master/pics/I1.PNG) <br />
+
+### To-Do
+- [X] Add inference code.
+- [X] Add results.
+- [ ] Add training and validation curve.
+- [ ] Add code for extracting the final keypoint location from the predicted heatmap.
+- [ ] Add network architecture.
+
+### Conclusion
+![It ain't much but its honest work](https://github.com/Kartikaeya/VRU_Net/blob/master/pics/it_aint_much_meme_pred.PNG).
